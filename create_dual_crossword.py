@@ -44,7 +44,7 @@ word_pairs = {
     "CAREFUL": "FEARFUL",
     "DIRECT": "ABRUPT",
     # "FRUGAL": "STINGY",
-    "INTENSE": "EXTREME",
+    # "INTENSE": "EXTREME",
     "SENSITIVE": "OVERREACT",
     "THOROUGH": "PEDANTIC",    
     "DEDICATED": "OBSESSIVE",
@@ -67,7 +67,7 @@ word_pairs = {
     "DISCERNING": "NITPICKING",
     "INTUITIVE": "SKEPTICAL",
     "PASSIONATE": "COMPULSIVE",
-    "INSIGHTFUL": "OVERCRITICAL",
+    # "INSIGHTFUL": "OVERCRITICAL",
     "CREATIVE": "ANARCHIC",
 }
 
@@ -139,79 +139,62 @@ def place_words(grid, center_pair, word_pairs):
     placed_words = []
 
     # -----------------------------
-    # Place extra words branching from any existing letter
+    # Helper: Check if a word can be placed
+    # -----------------------------
+    def can_place_word(r, c, pos_word, neg_word, vertical=True):
+        for i, (p, n) in enumerate(zip(pos_word, neg_word)):
+            rr = r + i if vertical else r
+            cc = c if vertical else c + i
+
+            if rr < 0 or rr >= rows or cc < 0 or cc >= cols:
+                return False  # Out of bounds
+
+            existing = grid[rr][cc]
+            if existing is not None and existing != "#" and existing != (p, n):
+                return False  # Conflict with non-matching letter
+
+        return True
+
+    # -----------------------------
+    # Try to place each word
     # -----------------------------
     for pos_word, neg_word in word_pairs.items():
         if len(pos_word) != len(neg_word):
-            continue  # skip mismatched
+            continue  # skip mismatched lengths
+
         placed = False
 
-        # Shuffle positions to maximize intersections
+        # Shuffle positions of existing letters to maximize intersections
         positions = [(r, c) for r in range(rows) for c in range(cols) if isinstance(grid[r][c], tuple)]
         random.shuffle(positions)
 
         for r, c in positions:
             for j, (p, n) in enumerate(zip(pos_word, neg_word)):
-                # Try vertical placement
-                start_row = r - j
-                if 0 <= start_row and start_row + len(pos_word) <= rows:
-                    conflict = False
-                    consecutive_central = 0
-                    for k in range(len(pos_word)):
-                        rr = start_row + k
-                        cc = c
-                        existing = grid[rr][cc]
-                        if existing is not None and existing != "#" and existing != (pos_word[k], neg_word[k]):
-                            conflict = True
-                            break
-                        if (rr, cc) in central_cells:
-                            consecutive_central += 1
-                            if consecutive_central >= 2:
-                                conflict = True
-                                break
-                        else:
-                            consecutive_central = 0
 
-                    if not conflict:
-                        # Place vertically
-                        for k in range(len(pos_word)):
-                            rr = start_row + k
-                            cc = c
-                            grid[rr][cc] = (pos_word[k], neg_word[k])
+                # Try vertical placement aligning j-th letter to (r, c)
+                start_row = r - j
+                start_col_v = c
+                if can_place_word(start_row, start_col_v, pos_word, neg_word, vertical=True):
+                    for k, (lp, ln) in enumerate(zip(pos_word, neg_word)):
+                        rr = start_row + k
+                        cc = start_col_v
+                        grid[rr][cc] = (lp, ln)
+                    placed_words.append((pos_word, neg_word))
+                    placed = True
+                    break
+
+                # Try horizontal placement aligning j-th letter to (r, c)
+                start_col = c - j
+                start_row_h = r
+                if can_place_word(start_row_h, start_col, pos_word, neg_word, vertical=False):
+                    for k, (lp, ln) in enumerate(zip(pos_word, neg_word)):
+                        rr = start_row_h
+                        cc = start_col + k
+                        grid[rr][cc] = (lp, ln)
+                    if not placed:
                         placed_words.append((pos_word, neg_word))
                         placed = True
-                        break
-
-                # Optional: Try horizontal placement
-                start_col_h = c - j
-                if 0 <= start_col_h and start_col_h + len(pos_word) <= cols:
-                    conflict = False
-                    consecutive_central = 0
-                    for k in range(len(pos_word)):
-                        rr = r
-                        cc = start_col_h + k
-                        existing = grid[rr][cc]
-                        if existing is not None and existing != "#" and existing != (pos_word[k], neg_word[k]):
-                            conflict = True
-                            break
-                        if (rr, cc) in central_cells:
-                            consecutive_central += 1
-                            if consecutive_central >= 2:
-                                conflict = True
-                                break
-                        else:
-                            consecutive_central = 0
-
-                    if not conflict:
-                        # Place horizontally
-                        for k in range(len(pos_word)):
-                            rr = r
-                            cc = start_col_h + k
-                            grid[rr][cc] = (pos_word[k], neg_word[k])
-                        if not placed:
-                            placed_words.append((pos_word, neg_word))
-                            placed = True
-                        break
+                    break
 
             if placed:
                 break
