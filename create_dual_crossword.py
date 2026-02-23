@@ -3,6 +3,7 @@ from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.lib.pagesizes import A4
 import random
+import time
 
 # -----------------------------
 # Grid template: '.' = empty, '#' = block
@@ -42,7 +43,7 @@ word_pairs = {
     "FOCUSED": "FIXATED",
     "CAREFUL": "FEARFUL",
     "DIRECT": "ABRUPT",
-    "FRUGAL": "STINGY",
+    # "FRUGAL": "STINGY",
     "INTENSE": "EXTREME",
     "SENSITIVE": "OVERREACT",
     "THOROUGH": "PEDANTIC",    
@@ -60,16 +61,17 @@ word_pairs = {
     "ENERGETIC": "IMPULSIVE",
     "HONEST": "BRUTAL",
     "ENTERPRISING": "EXPLOITATIVE",
-    "ASPIRING": "RUTHLESS",
-    "AMBITIOUS": "CUTTHROAT",
+    # "ASPIRING": "RUTHLESS",
+    # "AMBITIOUS": "CUTTHROAT",
+    "PRAGMATIC": "UNFEELING",
+    "DISCERNING": "NITPICKING",
+    "INTUITIVE": "SKEPTICAL",
+    "PASSIONATE": "COMPULSIVE",
+    "INSIGHTFUL": "OVERCRITICAL",
+    "CREATIVE": "ANARCHIC",
 }
 
-# DISCERNING / JUDGEMENTAL (11 letters each)
-# "PASSIONATE": "FANATICALX",
-# "CREATIVE": "CHAOTICX",
-# "ENTHUSIASTIC": "HYPERACTIVEX",
-
-CENTER_PAIR = ("NEURODIVERGENT", "MISUNDERSTOOD?")  # 14 letters each
+CENTER_PAIR = ("-NEURODIVERGENT-", "-MISUNDERSTOOD?-")  # 14 letters each
 
 # -----------------------------
 # PDF rendering with scaling
@@ -221,16 +223,16 @@ def place_words(grid, center_pair, word_pairs):
 # -----------------------------
 if __name__ == "__main__":
 
-    POS_LIST = ["AMBITIOUS", "ASPIRING", "MOTIVATYED", "DRIVEN", "ENTERPRISING", "PROGRESSIVE", "PIONEERING"]
-    NEG_LIST = ["RUTHLESS", "CUTTHROAT", "OPPORTUNISTIC", "PUSHY", "POWER-HUNGRY", "MANIPULATIVE", "EXPLOITATIVE", "UNETHICAL", "AMORAL"]
+    # POS_LIST = ["CREATIVE", "VISIONARY", "INNOVATIVE", "INTUITIVE", "PASSIONATE"]
+    # NEG_LIST = ["RECKLESS", "IMPRACTICAL", "CHAOTIC", "ANARCHIC", "SCATTERED"]
     
-    # look at POS and NEG lists - print out any words which are the same length and have at least one letter in common, to identify potential extra pairs to add to the word_pairs dict
-    potential_pairs = []
-    for pos in POS_LIST:
-        for neg in NEG_LIST:
-            if len(pos) == len(neg) and set(pos) & set(neg):
-                potential_pairs.append((pos, neg))
-                print(f"Potential pair: {pos} / {neg}")
+    # # look at POS and NEG lists - print out any words which are the same length and have at least one letter in common, to identify potential extra pairs to add to the word_pairs dict
+    # potential_pairs = []
+    # for pos in POS_LIST:
+    #     for neg in NEG_LIST:
+    #         if len(pos) == len(neg) and set(pos) & set(neg):
+    #             potential_pairs.append((pos, neg))
+    #             print(f"Potential pair: {pos} / {neg}")
 
     # remove any potential pairs that do not have any shared letters in the same position (to increase chances of intersection)
     # filtered_pairs = []
@@ -277,7 +279,7 @@ if __name__ == "__main__":
 
     # re-run while shuffling around the order of word pairs, to try to place more words    
     shuffled_pairs = list(word_pairs.items())
-    max_attempts = 100
+    max_attempts = 10000
     attempts = 0
     while attempts < max_attempts:
 
@@ -285,9 +287,24 @@ if __name__ == "__main__":
         random.shuffle(shuffled_pairs)
         grid = [[None if c == "." else "#" for c in row] for row in GRID_TEMPLATE]
         grid, placed = place_words(grid, CENTER_PAIR, dict(shuffled_pairs))
-        if len(placed) > len(word_pairs) * 0.9:  # If we placed more than 80% of the words, stop trying to shuffle
+        if len(placed) > len(word_pairs) * 0.99:  # If we placed more than 90% of the words, stop trying to shuffle
             break
+        print(f"Placed {len(placed)} out of {len(word_pairs)} word pairs.")
+
+        # keep best result so far
+        if attempts == 0:
+            best_grid = grid
+            best_placed = placed
+
+        if len(placed) > len(best_placed):
+            best_grid = grid
+            best_placed = placed
+
         attempts += 1
+
+    # Finalize with best result
+    grid = best_grid
+    placed = best_placed
 
     # word pairs used/not used
     used_pairs = set(placed)
@@ -298,5 +315,7 @@ if __name__ == "__main__":
             print(f"Not placed: {pos} / {neg}")
 
     # Generate PDF
-    create_pdf(grid, filename="dual_crossword.pdf", scale=0.4)
-    print(f"Dual crossword PDF generated with {len(placed)} extra words placed: dual_crossword.pdf")
+    current_time = int(time.time())
+    filename = f"dual_crossword_{len(placed)}_words_{current_time}.pdf"
+    create_pdf(grid, filename=filename, scale=0.5)
+    print(f"Dual crossword PDF generated with {len(placed)} extra words placed: {filename}")
