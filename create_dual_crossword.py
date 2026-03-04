@@ -8,7 +8,7 @@ import time
 # -----------------------------
 # Grid template
 # -----------------------------
-GRID_SIZE = 50
+GRID_SIZE = 30
 GRID_TEMPLATE = ["." * GRID_SIZE for _ in range(GRID_SIZE)]
 
 # -----------------------------
@@ -19,7 +19,7 @@ word_pairs = {
     "CAREFUL": "FEARFUL",
     "DIRECT": "ABRUPT",
     "SENSITIVE": "OVERREACT",
-    "THOROUGH": "PEDANTIC",
+    "THOROUGH": "PEDANTIC",    
     "DEDICATED": "OBSESSIVE",
     "RESERVED": "RETICENT",
     "ASSERTIVE": "CONCEITED",
@@ -37,19 +37,21 @@ word_pairs = {
     "PRAGMATIC": "UNFEELING",
     "DISCERNING": "NITPICKING",
     "INTUITIVE": "SKEPTICAL",
-    "PASSIONATE": "COMPULSIVE"
+    "PASSIONATE": "COMPULSIVE",
+    "CREATIVE": "ANARCHIC",
 }
 
-CENTER_PAIR = ("-NEURODIVERGENT-", "-MISUNDERSTOOD?-")
+CENTER_PAIR = ("NEURODIVERGENT", "MISUNDERSTOOD?")
 
 # -----------------------------
 # Flowable to draw grid
 # -----------------------------
 class CrosswordGrid(Flowable):
-    def __init__(self, grid, cell_size, show_pos=True, show_neg=True, show_slash=False, title=None, letters_scale=0.9):
+    def __init__(self, grid, cell_size, numbers=None, show_pos=True, show_neg=True, show_slash=False, title=None, letters_scale=0.9):
         Flowable.__init__(self)
         self.grid = grid
         self.cell_size = cell_size
+        self.numbers = numbers
         self.show_pos = show_pos
         self.show_neg = show_neg
         self.show_slash = show_slash
@@ -80,6 +82,12 @@ class CrosswordGrid(Flowable):
                 # Draw cell border
                 canvas.rect(x, y, size, size)
 
+                # Draw clue number
+                if self.numbers and self.numbers[r][c]:
+                    canvas.setFont("Helvetica", int(size * 0.25))
+                    canvas.setFillColor(colors.black)
+                    canvas.drawString(x + 1, y + size - size * 0.3, str(self.numbers[r][c]))
+
                 if cell == "#":
                     canvas.setFillColor(colors.black)
                     canvas.rect(x, y, size, size, fill=1)
@@ -96,7 +104,6 @@ class CrosswordGrid(Flowable):
                         font_size = int(size * 0.35)
                         canvas.setFont("Helvetica-Bold", font_size)
 
-                        # Positive letter (top-left, slightly above and left of slash)
                         if self.show_pos:
                             canvas.setFillColor(colors.darkgreen)
                             canvas.drawCentredString(
@@ -105,7 +112,6 @@ class CrosswordGrid(Flowable):
                                 pos
                             )
 
-                        # Negative letter (bottom-right, slightly below and right of slash)
                         if self.show_neg:
                             canvas.setFillColor(colors.darkred)
                             canvas.drawCentredString(
@@ -114,11 +120,9 @@ class CrosswordGrid(Flowable):
                                 neg
                             )
                     else:
-                        # Single letters (non-dual) centered and larger
                         font_size = int(size * self.letters_scale)
                         canvas.setFont("Courier-Bold", font_size)
 
-                        # Positive letters
                         if self.show_pos:
                             canvas.setFillColor(colors.darkgreen)
                             canvas.drawCentredString(
@@ -127,7 +131,6 @@ class CrosswordGrid(Flowable):
                                 pos
                             )
 
-                        # Negative letters
                         if self.show_neg:
                             canvas.setFillColor(colors.darkred)
                             canvas.drawCentredString(
@@ -139,10 +142,53 @@ class CrosswordGrid(Flowable):
 # -----------------------------
 # PDF generation
 # -----------------------------
-def create_pdf(grid, filename, cell_size, show_pos=True, show_neg=True, show_slash=False, title=None, letters_scale=0.9):
+def create_pdf(grid, filename, cell_size, numbers=None, show_pos=True, show_neg=True, show_slash=False, title=None, letters_scale=0.9):
     doc = SimpleDocTemplate(filename, pagesize=A4)
-    elements = [CrosswordGrid(grid, cell_size, show_pos, show_neg, show_slash, title, letters_scale)]
+    elements = [CrosswordGrid(grid, cell_size, numbers, show_pos, show_neg, show_slash, title, letters_scale)]
     doc.build(elements)
+
+# -----------------------------
+# Number the crossword
+# -----------------------------
+def number_crossword(grid):
+    rows = len(grid)
+    cols = len(grid[0])
+    number_grid = [[None for _ in range(cols)] for _ in range(rows)]
+    across_clues = []
+    down_clues = []
+    clue_number = 1
+
+    for r in range(rows):
+        for c in range(cols):
+            cell = grid[r][c]
+            if not isinstance(cell, tuple):
+                continue
+
+            start_across = (c == 0 or grid[r][c-1] == "#") and (c + 1 < cols and isinstance(grid[r][c+1], tuple))
+            start_down = (r == 0 or grid[r-1][c] == "#") and (r + 1 < rows and isinstance(grid[r+1][c], tuple))
+
+            if start_across or start_down:
+                number_grid[r][c] = clue_number
+
+                if start_across:
+                    word = []
+                    cc = c
+                    while cc < cols and isinstance(grid[r][cc], tuple):
+                        word.append(grid[r][cc])
+                        cc += 1
+                    across_clues.append((clue_number, r, c, word))
+
+                if start_down:
+                    word = []
+                    rr = r
+                    while rr < rows and isinstance(grid[rr][c], tuple):
+                        word.append(grid[rr][c])
+                        rr += 1
+                    down_clues.append((clue_number, r, c, word))
+
+                clue_number += 1
+
+    return number_grid, across_clues, down_clues
 
 # -----------------------------
 # Place words
@@ -161,7 +207,17 @@ def place_words(grid, center_pair, word_pairs):
         word_length = len(pos_word)
 
         # -----------------------------
-        # 1️⃣ Prevent same-direction appending
+        # 1️⃣ Bounds check
+        # -----------------------------
+        for i in range(word_length):
+            rr = r + i if vertical else r
+            cc = c if vertical else c + i
+
+            if rr < 0 or rr >= rows or cc < 0 or cc >= cols:
+                return False
+
+        # -----------------------------
+        # 2️⃣ Prevent same-direction appending
         # -----------------------------
         if vertical:
             before_r, before_c = r - 1, c
@@ -179,44 +235,34 @@ def place_words(grid, center_pair, word_pairs):
                 return False
 
         # -----------------------------
-        # 2️⃣ Check letter conflicts
+        # 3️⃣ Letter placement checks
         # -----------------------------
         for i, (p, n) in enumerate(zip(pos_word, neg_word)):
             rr = r + i if vertical else r
             cc = c if vertical else c + i
 
-            if rr < 0 or rr >= rows or cc < 0 or cc >= cols:
-                return False
-
             existing = grid[rr][cc]
 
+            # Conflict
             if existing is not None and existing != "#" and existing != (p, n):
                 return False
 
-        # -----------------------------
-        # 3️⃣ NEW RULE:
-        # Prevent across word ending
-        # directly before a down word
-        # (unless intersecting)
-        # -----------------------------
-        if not vertical:
-            # Across word ending position
-            end_r = r
-            end_c = c + word_length - 1
-
-            # Check cell to the RIGHT of last letter
-            check_r = end_r
-            check_c = end_c + 1
-
-            if 0 <= check_r < rows and 0 <= check_c < cols:
-                if isinstance(grid[check_r][check_c], tuple):
-                    # If there is a letter there AND
-                    # the cell below it also contains a letter,
-                    # then it's likely the start of a down word
-                    below_r = check_r + 1
-                    if 0 <= below_r < rows:
-                        if isinstance(grid[below_r][check_c], tuple):
-                            return False
+            # -----------------------------
+            # 4️⃣ NEW: True perpendicular adjacency rule
+            # -----------------------------
+            if existing is None:
+                if vertical:
+                    # Check left and right neighbours
+                    if cc > 0 and isinstance(grid[rr][cc - 1], tuple):
+                        return False
+                    if cc < cols - 1 and isinstance(grid[rr][cc + 1], tuple):
+                        return False
+                else:
+                    # Check above and below neighbours
+                    if rr > 0 and isinstance(grid[rr - 1][cc], tuple):
+                        return False
+                    if rr < rows - 1 and isinstance(grid[rr + 1][cc], tuple):
+                        return False
 
         return True
 
@@ -246,7 +292,6 @@ def place_words(grid, center_pair, word_pairs):
             if placed:
                 break
     return grid, placed_words
-
 # -----------------------------
 # Fill remaining empty with black
 # -----------------------------
@@ -257,17 +302,17 @@ def fill_empty_with_black(grid):
 # Main
 # -----------------------------
 if __name__ == "__main__":
-    max_attempts = 1000
+    start_time = time.time()
+    max_attempts = 1000000
     best_placed = 0
     best_grid = None
 
     for attempt in range(max_attempts):
-
         print(f"Attempt {attempt+1}/{max_attempts} - Placed {best_placed}/{len(word_pairs)} words", end="\r")
-
         grid = [[None if c == "." else "#" for c in row] for row in GRID_TEMPLATE]
         shuffled_pairs = list(word_pairs.items())
         random.shuffle(shuffled_pairs)
+
         grid, placed = place_words(grid, CENTER_PAIR, dict(shuffled_pairs))
 
         if len(placed) > best_placed:
@@ -284,6 +329,9 @@ if __name__ == "__main__":
     grid = best_grid
     filled_grid = fill_empty_with_black([row.copy() for row in grid])
 
+    # Number the grid
+    number_grid, across, down = number_crossword(filled_grid)
+
     # Determine cell size
     page_width, page_height = A4
     margin = 15*mm
@@ -293,17 +341,56 @@ if __name__ == "__main__":
 
     timestamp = int(time.time())
 
-    # 1️⃣ Dual answers (slash + colored)
-    create_pdf(filled_grid, f"crossword_dual_{timestamp}.pdf", cell_size, show_pos=True, show_neg=True, show_slash=True, title="Neurodivergent Traits Crossword")
+    # -----------------------------
+    # PDFs with numbering
+    # -----------------------------
+    create_pdf(
+        filled_grid,
+        f"crossword_dual_{timestamp}.pdf",
+        cell_size,
+        # numbers=number_grid,
+        show_pos=True,
+        show_neg=True,
+        show_slash=True,
+        title="Neurodivergent Traits Crossword"
+    )
 
-    # 2️⃣ Positive only (green, large)
-    create_pdf(filled_grid, f"crossword_pos_{timestamp}.pdf", cell_size, show_pos=True, show_neg=False, show_slash=False, title="Positive Traits Only", letters_scale=0.9)
+    create_pdf(
+        filled_grid,
+        f"crossword_pos_{timestamp}.pdf",
+        cell_size,
+        numbers=number_grid,
+        show_pos=True,
+        show_neg=False,
+        show_slash=False,
+        title="Positive Traits Only",
+        letters_scale=0.9
+    )
 
-    # 3️⃣ Negative only (red, large)
-    create_pdf(filled_grid, f"crossword_neg_{timestamp}.pdf", cell_size, show_pos=False, show_neg=True, show_slash=False, title="Negative Traits Only", letters_scale=0.9)
+    create_pdf(
+        filled_grid,
+        f"crossword_neg_{timestamp}.pdf",
+        cell_size,
+        numbers=number_grid,
+        show_pos=False,
+        show_neg=True,
+        show_slash=False,
+        title="Negative Traits Only",
+        letters_scale=0.9
+    )
 
-    # 4️⃣ Blank (black squares remain)
+    # ✅ Blank grid still shows clue numbers
     blank_grid = [[cell if cell == "#" else None for cell in row] for row in filled_grid]
-    create_pdf(blank_grid, f"crossword_blank_{timestamp}.pdf", cell_size, show_pos=False, show_neg=False, show_slash=False, title="Blank Crossword")
+    create_pdf(
+        blank_grid,
+        f"crossword_blank_{timestamp}.pdf",
+        cell_size,
+        numbers=number_grid,
+        show_pos=False,
+        show_neg=False,
+        show_slash=False,
+        title="Blank Crossword"
+    )
 
-    print("PDFs generated successfully!")
+    print(f"Best attempt placed {best_placed}/{len(word_pairs)} words.")
+    print(f"PDFs generated successfully! Total time: {time.time() - start_time:.2f} seconds")
