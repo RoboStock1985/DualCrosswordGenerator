@@ -8,7 +8,7 @@ import time
 # -----------------------------
 # Grid template
 # -----------------------------
-GRID_SIZE = 30
+GRID_SIZE = 50
 GRID_TEMPLATE = ["." * GRID_SIZE for _ in range(GRID_SIZE)]
 
 # -----------------------------
@@ -40,7 +40,7 @@ word_pairs = {
     "PASSIONATE": "COMPULSIVE"
 }
 
-CENTER_PAIR = ("NEURODIVERGENT", "MISUNDERSTOOD?")
+CENTER_PAIR = ("-NEURODIVERGENT-", "-MISUNDERSTOOD?-")
 
 # -----------------------------
 # Flowable to draw grid
@@ -158,14 +158,66 @@ def place_words(grid, center_pair, word_pairs):
     placed_words = []
 
     def can_place_word(r, c, pos_word, neg_word, vertical=True):
+        word_length = len(pos_word)
+
+        # -----------------------------
+        # 1️⃣ Prevent same-direction appending
+        # -----------------------------
+        if vertical:
+            before_r, before_c = r - 1, c
+            after_r, after_c = r + word_length, c
+        else:
+            before_r, before_c = r, c - 1
+            after_r, after_c = r, c + word_length
+
+        if 0 <= before_r < rows and 0 <= before_c < cols:
+            if isinstance(grid[before_r][before_c], tuple):
+                return False
+
+        if 0 <= after_r < rows and 0 <= after_c < cols:
+            if isinstance(grid[after_r][after_c], tuple):
+                return False
+
+        # -----------------------------
+        # 2️⃣ Check letter conflicts
+        # -----------------------------
         for i, (p, n) in enumerate(zip(pos_word, neg_word)):
             rr = r + i if vertical else r
             cc = c if vertical else c + i
+
             if rr < 0 or rr >= rows or cc < 0 or cc >= cols:
                 return False
+
             existing = grid[rr][cc]
+
             if existing is not None and existing != "#" and existing != (p, n):
                 return False
+
+        # -----------------------------
+        # 3️⃣ NEW RULE:
+        # Prevent across word ending
+        # directly before a down word
+        # (unless intersecting)
+        # -----------------------------
+        if not vertical:
+            # Across word ending position
+            end_r = r
+            end_c = c + word_length - 1
+
+            # Check cell to the RIGHT of last letter
+            check_r = end_r
+            check_c = end_c + 1
+
+            if 0 <= check_r < rows and 0 <= check_c < cols:
+                if isinstance(grid[check_r][check_c], tuple):
+                    # If there is a letter there AND
+                    # the cell below it also contains a letter,
+                    # then it's likely the start of a down word
+                    below_r = check_r + 1
+                    if 0 <= below_r < rows:
+                        if isinstance(grid[below_r][check_c], tuple):
+                            return False
+
         return True
 
     for pos_word, neg_word in word_pairs.items():
